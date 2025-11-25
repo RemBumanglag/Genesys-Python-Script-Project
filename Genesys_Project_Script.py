@@ -2072,20 +2072,21 @@ user_management_wrapup_codes_child_frame.pack(fill="both", expand=True)
 bulk_add_wrapup_codes_frame = tk.LabelFrame(user_management_wrapup_codes_child_frame, bg="#eaeaf2", fg="#273F4F", text=" BULK: ADD WRAPUP CODES ", font=("Segoe UI", 8, "bold italic"))
 bulk_add_wrapup_codes_frame.pack(fill="x", padx=5, pady=5)
 
-bulk_add_wrapup_codes_lbl = tk.Label(bulk_add_wrapup_codes_frame, text="Import File: ", font=("Segoe UI", 8))
+bulk_add_wrapup_codes_lbl = tk.Label(bulk_add_wrapup_codes_frame,text="Import File: ",font=("Segoe UI", 8))
 bulk_add_wrapup_codes_lbl.pack(side="left", padx=(5, 0), pady=5)
 
-bulk_add_wrapup_codes_btn = tk.Button(bulk_add_wrapup_codes_frame, text=" Select File ", font=("Segoe UI", 8), command=bulk_add_wrap_up)
-bulk_add_wrapup_codes_btn.pack(side="left", padx=5)
+bulk_add_wrapup_codes_btn = tk.Button(bulk_add_wrapup_codes_frame,text=" Select File ",font=("Segoe UI", 8),command=bulk_add_wrap_up)
+bulk_add_wrapup_codes_btn.pack(side="left", pady=5)  # remove padx
 
-bulk_wrapup_assignment_frame = tk.LabelFrame(user_management_wrapup_codes_child_frame, bg="#eaeaf2", fg="#273F4F", text=" BULK: WRAPUP CODE ASSIGNMENT ", font=("Segoe UI", 8, "bold italic"))
+bulk_wrapup_assignment_frame = tk.LabelFrame(user_management_wrapup_codes_child_frame, bg="#eaeaf2",fg="#273F4F",text=" BULK: WRAPUP CODE ASSIGNMENT ",font=("Segoe UI", 8, "bold italic"))
 bulk_wrapup_assignment_frame.pack(fill="x", padx=5, pady=5)
 
-bulk_wrapup_assignment_lbl = tk.Label(bulk_wrapup_assignment_frame, text="Import File: ", font=("Segoe UI", 8))
+bulk_wrapup_assignment_lbl = tk.Label(bulk_wrapup_assignment_frame,text="Import File: ",font=("Segoe UI", 8))
 bulk_wrapup_assignment_lbl.pack(side="left", padx=(5, 0), pady=5)
 
-bulk_wrapup_assignment_btn = tk.Button(bulk_wrapup_assignment_frame, text=" Select File ", font=("Segoe UI", 8), command=bulk_assign_wrapup)
-bulk_wrapup_assignment_btn.pack(side="left", padx=5)
+bulk_wrapup_assignment_btn = tk.Button(bulk_wrapup_assignment_frame,text=" Select File ",font=("Segoe UI", 8), command=bulk_assign_wrapup)
+bulk_wrapup_assignment_btn.pack(side="left", pady=5)
+
 
 all_wrapup_table_frame = tk.LabelFrame(user_management_wrapup_codes_child_frame, bg="#eaeaf2", fg="#273F4F",text=" WRAP UP CODE DETAILS ", font=("Segoe UI", 8, "bold italic"))
 all_wrapup_table_frame.pack(fill="x", padx=5, pady=5)
