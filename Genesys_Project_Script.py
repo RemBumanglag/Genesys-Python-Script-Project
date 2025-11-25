@@ -864,25 +864,26 @@ def bulk_assign_queue():
 
 def bulk_assign_wrapup():
     popup = tk.Toplevel(root)
-    popup.title("Bulk: Assign User to Queues")
+    popup.title("Bulk: Assign Wrapups to Queues")
     popup.geometry("360x180")
     popup.resizable(False, False)
     popup.attributes("-topmost", True)
-    popup.grab_set()  # Prevent focus loss
-    # --- Frame container ---
-    popup_parent_frame = tk.LabelFrame(popup, bg="#eaeaf2", text="", padx=10, pady=10)
+    popup.grab_set()
+
+    popup_parent_frame = tk.LabelFrame(popup, bg="#eaeaf2", padx=10, pady=10)
     popup_parent_frame.pack(fill="both", expand=True, padx=10, pady=10)
-    # --- Header ---
-    popup_header_lbl = tk.Label(
+
+    tk.Label(
         popup_parent_frame,
         text="Choose an action below:",
         font=("Segoe UI", 10, "bold italic"),
         bg="#eaeaf2"
-    )
-    popup_header_lbl.pack(pady=5)
+    ).pack(pady=5)
 
+    # ------------------------
+    # IMPORT CSV FILE
+    # ------------------------
     def import_csv_file():
-        # --- Select CSV File ---
         file_path = filedialog.askopenfilename(
             title="Select CSV File",
             filetypes=[("CSV Files", "*.csv")]
@@ -891,121 +892,159 @@ def bulk_assign_wrapup():
             messagebox.showinfo("Cancelled", "No file selected.")
             popup.destroy()
             return
-        
+
         assignments = []
 
         try:
             with open(file_path, newline='', encoding='utf-8') as csvfile:
                 reader = csv.DictReader(csvfile)
-                required_columns = ("queueId", "wrapupCodeId")
-
+                required_columns = {"queueId", "wrapupCodeId"}
                 if not required_columns.issubset(reader.fieldnames):
-                    messagebox.showerror(
-                        "Invalid CSV Format",
-                        "CSV must contain 'queueId' and 'wrapupCodeId' columns."
-                    )
+                    messagebox.showerror("Invalid CSV Format",
+                        "CSV must contain 'queueId' and 'wrapupCodeId' columns.")
                     return
                 for row in reader:
-                    wrapup_id = row.get("wrapupCodeId", "").strip()
-                    queue_id = row.get("queueId", "").strip()
-                    if wrapup_id and queue_id:
-                        assignments.append({"wrapupCodeId": wrapup_id, "queueId": queue_id})
+                    queue_id = row["queueId"].strip()
+                    wrapup_id = row["wrapupCodeId"].strip()
+                    if queue_id and wrapup_id:
+                        assignments.append({"queueId": queue_id, "wrapupCodeId": wrapup_id})
 
             if not assignments:
-                messagebox.showwarning("No Data", "No valid queueId and wrapupCodeId pairs found.")
+                messagebox.showwarning("No Data", "No valid queueId / wrapupCodeId pairs found.")
                 popup.destroy()
                 return
-            
         except Exception as e:
             messagebox.showerror("Error", f"Failed to read file:\n{str(e)}")
             popup.destroy()
             return
-        
-        # --- Ask for confirmation ---
-        if not messagebox.askyesno("Confirm", f"Proceed to assign {len(assignments)} wrapup to queues?"):
+
+        if not messagebox.askyesno(
+            "Confirm",
+            f"Proceed to assign {len(assignments)} wrapup codes to queues?"
+        ):
             return
-        
-        # --- Authenticate to Genesys Cloud ---
+
+        # ------------------------
+        # AUTHENTICATE
+        # ------------------------
         client_id = client_id_entry.get().strip()
         client_secret = client_secret_entry.get().strip()
 
         if not client_id or not client_secret:
-            messagebox.showerror("Missing Credentials", "Client ID and Client Secret cannot be empty.")
+            messagebox.showerror("Missing Credentials",
+                                 "Client ID and Client Secret cannot be empty.")
             return
-        
+
         auth_url = "https://login.mypurecloud.jp/oauth/token"
         auth_payload = {
             "grant_type": "client_credentials",
             "client_id": client_id,
             "client_secret": client_secret
         }
-
         auth_response = requests.post(auth_url, data=auth_payload)
         if auth_response.status_code != 200:
-            messagebox.showerror("Authentication Failed", f"{auth_response.status_code}: {auth_response.text}")
+            messagebox.showerror("Authentication Failed",
+                                 f"{auth_response.status_code}: {auth_response.text}")
             popup.destroy()
             return
+
         access_token = auth_response.json().get("access_token")
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
         }
-        api_base_url = "https://api.mypurecloud.jp/api/v2"
+        api_base = "https://api.mypurecloud.jp/api/v2"
 
-        # --- Create popup for progress ---
+        # ------------------------
+        # PROGRESS POPUP
+        # ------------------------
         progress_popup = tk.Toplevel(root)
-        progress_popup.title("Assigning Wrapup to Queues")
+        progress_popup.title("Assigning Wrapup Codes")
         progress_popup.geometry("380x160")
         progress_popup.resizable(False, False)
         progress_popup.attributes("-topmost", True)
         progress_popup.grab_set()
-        tk.Label(progress_popup, text="Processing assignments...", font=("Arial", 11)).pack(pady=10)
+
+        tk.Label(progress_popup, text="Processing...", font=("Arial", 11)).pack(pady=10)
         progress = ttk.Progressbar(progress_popup, mode="determinate", maximum=len(assignments))
         progress.pack(pady=5, padx=20, fill="x")
         counter_label = tk.Label(progress_popup, text="0 / 0 completed", font=("Arial", 9), fg="gray")
         counter_label.pack(pady=5)
-        progress_popup.update_idletasks()
 
+        # ------------------------
+        # RUN ASSIGNMENT
+        # ------------------------
         def run_assignment():
             success_count = 0
             error_count = 0
+            invalid_wrapups = []
 
-            # Group assignments by queueId
+            # Group assignments by queue
             queue_map = {}
             for item in assignments:
-                queue_map.setdefault(item["queueId"], []).append(item["wrapupId"])
+                queue_map.setdefault(item["queueId"], []).append(item["wrapupCodeId"])
 
             # Process each queue
             for queue_id, wrapup_ids in queue_map.items():
-
-                # Genesys endpoint supports up to 100 users per request
-                for i in range(0, len(wrapup_ids), 100):
-                    batch = wrapup_ids[i:i + 100]
-                    url = f"{api_base_url}/routing/queues/{queue_id}/wrapupcodes"
-                    payload = [{"id": uid, "type": "WRAPUP"} for uid in batch]
+                # Validate wrapup IDs individually
+                valid_wrapup_ids = []
+                for wid in wrapup_ids:
                     try:
-                        response = requests.post(url, headers=headers, json=payload)
-                        if response.status_code in [200, 201, 204]:
-                            success_count += len(batch)
+                        resp = requests.get(
+                            f"{api_base}/routing/wrapupcodes",
+                            headers=headers,
+                            params={"id": wid.strip()}
+                        )
+                        resp.raise_for_status()
+                        entities = resp.json().get("entities", [])
+                        if entities:
+                            valid_wrapup_ids.append({"id": wid.strip()})
                         else:
-                            error_count += len(batch)
-                            print(f"❌ Failed: {response.status_code} - {response.text}")
-
+                            invalid_wrapups.append({"queueId": queue_id, "wrapupCodeId": wid})
                     except Exception as e:
-                        print(f"Error assigning batch to queue {queue_id}: {e}")
-                        error_count += len(batch)
-                    progress["value"] += len(batch)
+                        print(f"❌ Error validating wrapup {wid} for queue {queue_id}: {e}")
+                        invalid_wrapups.append({"queueId": queue_id, "wrapupCodeId": wid})
+
+                if not valid_wrapup_ids:
+                    continue  # Skip queue if no valid wrapups
+
+                # Bulk POST to assign wrapups
+                try:
+                    resp = requests.post(
+                        f"{api_base}/routing/queues/{queue_id}/wrapupcodes",
+                        headers=headers,
+                        json=valid_wrapup_ids
+                    )
+                    if resp.status_code in (200, 201, 204):
+                        success_count += len(valid_wrapup_ids)
+                    else:
+                        print(f"❌ Failed batch for queue {queue_id}: {resp.status_code} - {resp.text}")
+                        error_count += len(valid_wrapup_ids)
+                except Exception as e:
+                    print(f"❌ Exception for queue {queue_id}: {e}")
+                    error_count += len(valid_wrapup_ids)
+
+                for _ in valid_wrapup_ids:
+                    progress["value"] += 1
                     counter_label.config(text=f"{success_count + error_count}/{len(assignments)} completed")
                     progress_popup.update_idletasks()
+
             progress_popup.destroy()
-            messagebox.showinfo(
-                "Process Completed",
-                f"✅ Successfully assigned: {success_count}\n❌ Failed: {error_count}\n\nFile: {file_path}"
-            )
+
+            # Show results
+            msg = f"✅ Successfully assigned: {success_count}\n❌ Failed: {error_count}"
+            if invalid_wrapups:
+                msg += "\n\n⚠ Invalid wrapup IDs skipped:\n" + \
+                       "\n".join([f"{i['wrapupCodeId']} (queue {i['queueId']})" for i in invalid_wrapups])
+
+            messagebox.showinfo("Process Completed", msg)
             popup.destroy()
+
         threading.Thread(target=run_assignment).start()
 
-    # --- Export CSV Template ---
+    # ------------------------
+    # EXPORT TEMPLATE
+    # ------------------------
     def export_csv_template():
         file_path = filedialog.asksaveasfilename(
             defaultextension=".csv",
@@ -1013,12 +1052,11 @@ def bulk_assign_wrapup():
             title="Save CSV Template As",
             initialfile="Bulk_Assign_Wrapup_to_Queue.csv"
         )
-
         if file_path:
             try:
                 with open(file_path, "w", newline="", encoding="utf-8") as f:
                     writer = csv.writer(f)
-                    writer.writerow(["wrapupCodeId", "queueId"])
+                    writer.writerow(["queueId", "wrapupCodeId"])
                 messagebox.showinfo("Template Exported", f"Template saved:\n{file_path}")
                 popup.destroy()
             except Exception as e:
@@ -1027,8 +1065,10 @@ def bulk_assign_wrapup():
             messagebox.showinfo("Cancelled", "Export cancelled by user.")
             popup.destroy()
 
-     # --- Buttons ---
-    import_btn = tk.Button(
+    # ------------------------
+    # BUTTONS
+    # ------------------------
+    tk.Button(
         popup_parent_frame,
         text="📂 Import CSV File",
         font=("Segoe UI", 9, "bold"),
@@ -1036,10 +1076,9 @@ def bulk_assign_wrapup():
         bg="#273F4F",
         fg="white",
         command=import_csv_file
-    )
-    import_btn.pack(pady=5)
+    ).pack(pady=5)
 
-    export_btn = tk.Button(
+    tk.Button(
         popup_parent_frame,
         text="💾 Export CSV Template",
         font=("Segoe UI", 9, "bold"),
@@ -1047,8 +1086,8 @@ def bulk_assign_wrapup():
         bg="#DC5F00",
         fg="white",
         command=export_csv_template
-    )
-    export_btn.pack(pady=5)
+    ).pack(pady=5)
+
     return popup
 
 def refresh_queue_table():
@@ -1985,7 +2024,6 @@ roles_and_permission_table.pack(fill="both", expand=True, padx=5, pady=5)
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 user_management_queue_parent_frame = tk.Frame(user_management_parent_frame, bg="#273F4F")
-
 user_management_queue_child_frame = tk.Frame(user_management_queue_parent_frame, bg="#eaeaf2")
 user_management_queue_child_frame.pack(fill="both", expand=True)
 
