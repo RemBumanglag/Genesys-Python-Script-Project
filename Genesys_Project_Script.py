@@ -123,10 +123,6 @@ def hide_listbox():
 def get_selected_columns():
     return [key for key, var in checkbox_var.items() if var.get()]
 
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
-import requests, csv, threading
-
 def generate_user_list():
     def task():
         try:
@@ -1837,7 +1833,149 @@ home_scrollable = ScrollableFrame(home_child_frame)
 home_scrollable.pack(fill="both", expand=True, padx=10, pady=10)
 home_body_frame = home_scrollable.scrollable_frame
 
-info_frame_01 = tk.Frame()
+about_frame_lbl = tk.LabelFrame(home_body_frame, text="About", font=("century gothic", 10, "bold"), bg="#eaeaf2", fg="#273F4F")
+about_frame_lbl.pack(fill="x", padx=10, pady=(5, 5))
+
+about_header_frame = tk.Frame(about_frame_lbl, bg="#eaeaf2")
+about_header_frame.pack(fill="x", padx=10, pady=(5, 5))
+
+about_header_lbl = tk.Label(about_header_frame, text="Welcome to Genesys Cloud Python Script", font=("century gothic", 14, "bold"), bg="#eaeaf2", fg="#000000")
+about_header_lbl.pack(side="left")
+
+about_sub_header_frame = tk.Frame(about_frame_lbl, bg="#eaeaf2")
+about_sub_header_frame.pack(fill="x", padx=10, pady=(5, 5))
+
+sub_header_txt = "  This tool provides a simple, user-friendly interface for extracting and reviewing essential information from your Genesys Cloud platform."
+
+about_sub_header_lbl = tk.Label(about_sub_header_frame, text=sub_header_txt, font=("century gothic", 8), justify="left", bg="#eaeaf2", fg="#000000")
+about_sub_header_lbl.pack(side="left")
+
+key_features_frame_lbl = tk.LabelFrame(home_body_frame, text="Key Features", 
+                                       font=("century gothic", 10, "bold"), 
+                                       bg="#eaeaf2", fg="#273F4F")
+key_features_frame_lbl.pack(fill="x", padx=10, pady=(5, 5))
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+key_features_1_frame = tk.Label(key_features_frame_lbl, bg="#eaeaf2")
+key_features_1_frame.pack(fill="x", padx=10, pady=(5, 5))
+
+key_features_1_lbl = tk.Label(key_features_1_frame, text="Agent Performance",
+                         font=("century gothic", 12, "bold"), bg="#eaeaf2", fg="#000000")
+key_features_1_lbl.pack(side="left")
+
+key_features_1_description_frame = tk.Frame(key_features_frame_lbl, bg="#eaeaf2")
+key_features_1_description_frame.pack(fill="x", padx=10, pady=(5, 5))
+
+key_features_1_description_txt = "  Quickly retrieve and display user profiles, including full names, email addresses, and status."
+
+key_features_1_description_lbl = tk.Label(key_features_1_description_frame, text=key_features_1_description_txt, font=("century gothic", 8), justify="left", bg="#eaeaf2", fg="#000000")
+
+key_features_1_description_lbl.pack(side="left")
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+key_features_2_frame = tk.Label(key_features_frame_lbl, bg="#eaeaf2")
+key_features_2_frame.pack(fill="x", padx=10, pady=(5, 5))
+
+key_features_2_lbl = tk.Label(key_features_2_frame, text="Roles & Permission",
+                         font=("century gothic", 12, "bold"), bg="#eaeaf2", fg="#000000")
+key_features_2_lbl.pack(side="left")
+
+key_features_2_description_frame = tk.Frame(key_features_frame_lbl, bg="#eaeaf2")
+key_features_2_description_frame.pack(fill="x", padx=10, pady=(5, 5))
+
+key_features_2_description_txt = "  Access a comprehensive breakdown of all user roles and their associated permissions across your organization."
+
+key_features_2_description_lbl = tk.Label(key_features_2_description_frame, text=key_features_2_description_txt, font=("century gothic", 8), justify="left", bg="#eaeaf2", fg="#000000")
+
+key_features_2_description_lbl.pack(side="left")
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+key_features_3_frame = tk.Label(key_features_frame_lbl, bg="#eaeaf2")
+key_features_3_frame.pack(fill="x", padx=10, pady=(5, 5))
+
+key_features_3_lbl = tk.Label(key_features_3_frame, text="Bulk: Add/Assign to Queues",
+                         font=("century gothic", 12, "bold"), bg="#eaeaf2", fg="#000000")
+key_features_3_lbl.pack(side="left")
+
+key_features_3_description_frame = tk.Frame(key_features_frame_lbl, bg="#eaeaf2")
+key_features_3_description_frame.pack(fill="x", padx=10, pady=(5, 5))
+
+key_features_3_description_txt = "  This feature allows you to bulk add and assign Genesys queues."
+
+key_features_3_description_lbl = tk.Label(key_features_3_description_frame, text=key_features_3_description_txt, font=("century gothic", 8), justify="left", bg="#eaeaf2", fg="#000000")
+
+key_features_3_description_lbl.pack(side="left")
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+key_features_4_frame = tk.Label(key_features_frame_lbl, bg="#eaeaf2")
+key_features_4_frame.pack(fill="x", padx=10, pady=(5, 5))
+
+key_features_4_lbl = tk.Label(key_features_4_frame, text="Wrapup Codes",
+                         font=("century gothic", 12, "bold"), bg="#eaeaf2", fg="#000000")
+key_features_4_lbl.pack(side="left")
+
+key_features_4_description_frame = tk.Frame(key_features_frame_lbl, bg="#eaeaf2")
+key_features_4_description_frame.pack(fill="x", padx=10, pady=(5, 5))
+
+key_features_4_description_txt = "  This feature allows you to bulk add and assign Genesys wrapup codes."
+
+key_features_4_description_lbl = tk.Label(key_features_4_description_frame, text=key_features_4_description_txt, font=("century gothic", 8), justify="left", bg="#eaeaf2", fg="#000000")
+
+key_features_4_description_lbl.pack(side="left")
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+how_it_works_frame_lbl = tk.LabelFrame(home_body_frame, text="How It Works", 
+                                       font=("century gothic", 10, "bold"), 
+                                       bg="#eaeaf2", fg="#273F4F")
+how_it_works_frame_lbl.pack(fill="x", padx=10, pady=(5, 5))
+
+how_it_works_1_description_frame = tk.Frame(how_it_works_frame_lbl, bg="#eaeaf2")
+how_it_works_1_description_frame.pack(fill="x", padx=10, pady=(5, 5))
+
+how_it_works_1_description_txt = "1. Navigate using the menu at the top."
+
+how_it_works_1_description_lbl = tk.Label(how_it_works_1_description_frame, text=how_it_works_1_description_txt, font=("century gothic", 8), justify="left", bg="#eaeaf2", fg="#000000", wraplength=450)
+how_it_works_1_description_lbl.pack(side="left")
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+how_it_works_2_description_frame = tk.Frame(how_it_works_frame_lbl, bg="#eaeaf2")
+how_it_works_2_description_frame.pack(fill="x", padx=10, pady=(5, 5))
+
+how_it_works_2_description_txt = "2. Select the desired function: either User Extraction, Roles & Permission, Bulk: Add and Assign Queues and Bulk: Add and Assign Wrapup Codes."
+
+how_it_works_2_description_lbl = tk.Label(how_it_works_2_description_frame, text=how_it_works_2_description_txt, font=("century gothic", 8), justify="left", bg="#eaeaf2", fg="#000000", wraplength=450)
+how_it_works_2_description_lbl.pack(side="left")
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+how_it_works_3_description_frame = tk.Frame(how_it_works_frame_lbl, bg="#eaeaf2")
+how_it_works_3_description_frame.pack(fill="x", padx=10, pady=(5, 5))
+
+how_it_works_3_description_txt = "3. The extracted data will be displayed in a structured format and can be saved as needed."
+
+how_it_works_3_description_lbl = tk.Label(how_it_works_3_description_frame, text=how_it_works_3_description_txt, font=("century gothic", 8), justify="left", bg="#eaeaf2", fg="#000000", wraplength=450)
+how_it_works_3_description_lbl.pack(side="left")
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+note_frame_lbl = tk.LabelFrame(home_body_frame, text="Note", 
+                                       font=("century gothic", 10, "bold"), 
+                                       bg="#eaeaf2", fg="#273F4F")
+note_frame_lbl.pack(fill="x", padx=10, pady=(5, 5))
+
+note_description_frame = tk.Frame(note_frame_lbl, bg="#eaeaf2")
+note_description_frame.pack(fill="x", padx=10, pady=(5, 5))
+
+note_description_txt = "Please ensure you are authenticated with valid API credentials to access Genesys Cloud data. All operations comply with your organization's data security protocols."
+
+note_description_lbl = tk.Label(note_description_frame, text=note_description_txt, font=("century gothic", 8), justify="left", bg="#eaeaf2", fg="#000000", wraplength=450)
+note_description_lbl.pack(side="left")
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 
 
@@ -1871,7 +2009,6 @@ def show_queues_tab():
     user_menu_roles_and_permission_btn.config(font=("Segoe UI", 8))
     user_menu_queues_btn.config(font=("Segoe UI", 8, "bold"))
     user_menu_wrap_up_codes_btn.config(font=("Segoe UI", 8))
-
 
 def show_wrap_up_codes_tab():
     user_management_agent_performance_parent_frame.forget()
@@ -2021,6 +2158,7 @@ for col in roles_and_permission_column:
     roles_and_permission_table.column(col, anchor="center", width=120)
 
 roles_and_permission_table.pack(fill="both", expand=True, padx=5, pady=5)
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 user_management_queue_parent_frame = tk.Frame(user_management_parent_frame, bg="#273F4F")
@@ -2087,7 +2225,6 @@ bulk_wrapup_assignment_lbl.pack(side="left", padx=(5, 0), pady=5)
 bulk_wrapup_assignment_btn = tk.Button(bulk_wrapup_assignment_frame,text=" Select File ",font=("Segoe UI", 8), command=bulk_assign_wrapup)
 bulk_wrapup_assignment_btn.pack(side="left", pady=5)
 
-
 all_wrapup_table_frame = tk.LabelFrame(user_management_wrapup_codes_child_frame, bg="#eaeaf2", fg="#273F4F",text=" WRAP UP CODE DETAILS ", font=("Segoe UI", 8, "bold italic"))
 all_wrapup_table_frame.pack(fill="x", padx=5, pady=5)
 
@@ -2105,6 +2242,7 @@ for col in wrapup_codes_column:
     wrapup_codes_table.column(col, anchor="center", width=120)
 
 wrapup_codes_table.pack(fill="both", expand=True, padx=5, pady=5)
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 settings_parent_frame = tk.Frame(root, bg="#273F4F")
