@@ -5,6 +5,7 @@ from tkinter import ttk, messagebox, filedialog, font
 import requests, threading, csv, time
 from ttkthemes import ThemedTk
 from datetime import datetime, timezone, timedelta
+import re
 
 showDefaultTab = True
 
@@ -123,52 +124,79 @@ def hide_listbox():
 def get_selected_columns():
     return [key for key, var in checkbox_var.items() if var.get()]
 
+def contains_special_chars(value):
+    # Regex matches anything NOT letters, numbers, spaces, hyphens, underscores, or periods
+    return bool(re.search(r"[^A-Za-z0-9 ._-]", value))
+
+# --- Helper to safely handle rate-limited GET requests ---
+def safe_api_get(url, headers, base_delay=0.3):
+    """
+    Performs a GET request with rate-limit handling (429).
+    Automatically retries after the server's recommended wait time.
+    """
+    while True:
+        response = requests.get(url, headers=headers)
+
+        if response.status_code == 200:
+            time.sleep(base_delay)  # throttle between all calls
+            return response
+
+        if response.status_code == 429:
+            try:
+                msg = response.json().get("message", "")
+                retry_after = int(msg.split("[")[1].split("]")[0])
+            except:
+                retry_after = 3  # fallback
+            print(f"⚠️ Rate limited 429 — retrying in {retry_after} seconds")
+            time.sleep(retry_after)
+            continue
+
+        return response
+
 def generate_user_list():
     def task():
         try:
-            # --- Disable all buttons and inputs while running ---
+            # --- Disable UI while running ---
             for widget in root.winfo_children():
                 if isinstance(widget, (tk.Button, ttk.Combobox, tk.Entry)):
                     widget.configure(state="disabled")
 
-            # --- Get credentials before showing popup ---
+            # --- Get credentials ---
             client_id = client_id_entry.get().strip()
             client_secret = client_secret_entry.get().strip()
             status = user_state_var.get()
 
             if not client_id or not client_secret:
                 messagebox.showerror("Missing Credentials", "Client ID and Client Secret cannot be empty.")
-                # Re-enable UI
                 for widget in root.winfo_children():
                     if isinstance(widget, (tk.Button, ttk.Combobox, tk.Entry)):
                         widget.configure(state="normal")
                 return
 
-            # --- Show loading popup only if credentials are valid ---
+            # --- Loading popup ---
             def bulk_add_queue():
                 popup = tk.Toplevel(root)
                 popup.title("Loading")
                 popup.geometry("340x160")
                 popup.resizable(False, False)
                 popup.attributes("-topmost", True)
-                popup.grab_set()  # Lock focus to popup
+                popup.grab_set()
 
                 tk.Label(popup, text="Fetching user data...", font=("Arial", 11)).pack(pady=10)
                 progress = ttk.Progressbar(popup, mode="determinate", maximum=100)
                 progress.pack(pady=5, padx=20, fill="x")
-
                 counter_label = tk.Label(popup, text="0 users processed", font=("Arial", 9), fg="gray")
                 counter_label.pack(pady=5)
-
                 tk.Label(popup, text="Please wait, this may take a few minutes.", font=("Arial", 9), fg="gray").pack(pady=5)
                 return popup, progress, counter_label
 
             popup, progress, counter_label = bulk_add_queue()
 
-            # --- Main process starts ---
+            # --- Setup Treeview ---
             selected_columns = get_selected_columns()
             setup_treeview(user_body_frame, selected_columns)
 
+            # --- Authenticate ---
             api_base_url = "https://login.mypurecloud.jp"
             auth_url = f"{api_base_url}/oauth/token"
             auth_payload = {
@@ -190,12 +218,13 @@ def generate_user_list():
                 "Content-Type": "application/json"
             }
 
+            # --- Fetch all users ---
             state_param = "any"
             users_url = f"{api_base_url_users}/api/v2/users?state={state_param}&expand=dateLastLogin,lastTokenIssued"
             all_users = []
 
             while users_url:
-                response = requests.get(users_url, headers=headers)
+                response = safe_api_get(users_url, headers)
                 if response.status_code == 200:
                     data = response.json()
                     all_users.extend(data.get("entities", []))
@@ -207,7 +236,7 @@ def generate_user_list():
                     popup.destroy()
                     return
 
-            # --- Filter by user state if applicable ---
+            # --- Filter by state ---
             if status in ["Active", "Inactive", "Deleted"]:
                 filtered_users = [u for u in all_users if u.get("state") == status.lower()]
             else:
@@ -219,37 +248,44 @@ def generate_user_list():
                 messagebox.showinfo("No Results", "No users found matching the criteria.")
                 return
 
-            # --- Process user data with progress counter ---
+            # --- Process each user ---
             for i, user in enumerate(filtered_users, start=1):
                 popup.title(f"Processing user {i} of {total_users}")
                 progress["value"] = (i / total_users) * 100
                 counter_label.config(text=f"Processed {i}/{total_users} users")
-                popup.update_idletasks()  # Refresh popup UI
+                popup.update_idletasks()
 
                 user_id = user.get("id")
 
-                # --- Fetch Department info ---
+                # --- Department ---
                 user_details_url = f"{api_base_url_users}/api/v2/users/{user_id}"
-                user_details_response = requests.get(user_details_url, headers=headers)
+                user_details_response = safe_api_get(user_details_url, headers)
+
                 if user_details_response.status_code == 200:
                     user_details = user_details_response.json()
-                    user["department"] = user_details.get("department", "N/A")
+                    department = user_details.get("department", "N/A")
+                    if isinstance(department, str) and contains_special_chars(department):
+                        print(f"Special characters detected in department: {department}")
+                    user["department"] = department
                 else:
+                    print(f"Failed to retrieve department for user {user_id}")
+                    print("Status:", user_details_response.status_code)
+                    print("Response:", user_details_response.text)
                     user["department"] = "Error retrieving department"
 
-                # Licenses
+                # --- Licenses ---
                 license_url = f"{api_base_url_users}/api/v2/license/users/{user_id}"
-                license_response = requests.get(license_url, headers=headers)
+                license_response = safe_api_get(license_url, headers)
                 user["licenseList"] = [lic.get("description", lic.get("id")) for lic in license_response.json().get("licenses", [])] if license_response.status_code == 200 else ["Error retrieving licenses"]
 
-                # Roles
+                # --- Roles ---
                 roles_url = f"{api_base_url_users}/api/v2/users/{user_id}/roles"
-                roles_response = requests.get(roles_url, headers=headers)
+                roles_response = safe_api_get(roles_url, headers)
                 user["roleList"] = [role.get("name", role.get("id")) for role in roles_response.json().get("roles", [])] if roles_response.status_code == 200 else ["Error retrieving roles"]
 
-                # Queues
+                # --- Queues ---
                 queues_url = f"{api_base_url_users}/api/v2/users/{user_id}/queues"
-                queues_response = requests.get(queues_url, headers=headers)
+                queues_response = safe_api_get(queues_url, headers)
                 user["queueList"] = [queue.get("name", queue.get("id")) for queue in queues_response.json().get("entities", [])] if queues_response.status_code == 200 else ["Error retrieving queues"]
 
                 # --- Convert LastLogin to UTC+8 ---
@@ -260,9 +296,9 @@ def generate_user_list():
                         utc8_dt = utc_dt.astimezone(timezone(timedelta(hours=8)))
                         user["dateLastLogin"] = utc8_dt.strftime("%Y-%m-%d %H:%M:%S")
                     except Exception:
-                        user["dateLastLogin"] = last_login_utc  # fallback
+                        user["dateLastLogin"] = last_login_utc
 
-            # --- Update Treeview and export data ---
+            # --- Update Treeview & Export CSV ---
             def update_treeview():
                 user_tree.delete(*user_tree.get_children())
                 csv_data = []
@@ -288,7 +324,6 @@ def generate_user_list():
 
                 popup.destroy()
 
-                # --- Ask user for CSV filename ---
                 file_path = filedialog.asksaveasfilename(
                     defaultextension=".csv",
                     filetypes=[("CSV files", "*.csv")],
@@ -306,7 +341,6 @@ def generate_user_list():
                 else:
                     messagebox.showinfo("Cancelled", "Export cancelled by user.")
 
-                # Re-enable UI
                 for widget in root.winfo_children():
                     if isinstance(widget, (tk.Button, ttk.Combobox, tk.Entry)):
                         widget.configure(state="normal")
@@ -324,7 +358,6 @@ def generate_user_list():
                 if isinstance(widget, (tk.Button, ttk.Combobox, tk.Entry)):
                     widget.configure(state="normal")
 
-    # Launch background thread
     threading.Thread(target=task, daemon=True).start()
 
 def generate_user_list_in_queue():
