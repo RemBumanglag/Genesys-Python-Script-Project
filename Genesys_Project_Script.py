@@ -5,7 +5,7 @@ from tkinter import ttk, messagebox, filedialog, font
 import requests, threading, csv, time
 from ttkthemes import ThemedTk
 from datetime import datetime, timezone, timedelta
-import re
+import re, sys, os, base64
 
 showDefaultTab = True
 
@@ -46,6 +46,54 @@ class ScrollableFrame(tk.Frame):
         # Linux
         target.bind_all("<Button-4>", lambda e: target.yview_scroll(-1, "units"))
         target.bind_all("<Button-5>", lambda e: target.yview_scroll(1, "units"))
+
+def get_org_details():
+    # Placeholder for fetching organization details
+    client_id = client_id_entry.get().strip()
+    client_secret = client_secret_entry.get().strip()
+
+    if not client_id or not client_secret:
+        messagebox.showerror("Missing Credentials", "Client ID and Client Secret are required.")
+        return
+    
+    try:
+        # --- OAuth Token ---
+        auth_url = "https://login.mypurecloud.jp/oauth/token"
+        auth_header = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+
+        token_response = requests.post(
+            auth_url,
+            headers={
+                "Authorization": f"Basic {auth_header}",
+                "Content-Type": "application/x-www-form-urlencoded"
+            },
+            data={"grant_type": "client_credentials"}
+        )
+        token_response.raise_for_status()
+        access_token = token_response.json()["access_token"]
+
+        # --- Get Org Details ---
+        org_response = requests.get(
+            "https://api.mypurecloud.jp/api/v2/organizations/me",
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+        org_response.raise_for_status()
+
+        org_data = org_response.json()
+        org_id = org_data.get("id", "N/A")
+        org_name = org_data.get("name", "N/A")
+        org_domain = org_data.get("domain", "N/A")
+
+        # --- Assign to Labels ---
+        org_id_value.config(text=org_id)
+        org_name_value.config(text=org_name)
+        org_domain_value.config(text=org_domain)
+
+        show_organization_info_frame.pack(fill="both", expand=True, padx=5, pady=(0, 5))
+
+    except requests.exceptions.RequestException as e:
+        messagebox.showerror("API Error", str(e))
+        show_organization_info_frame.forget()
 
 def show_home():
     home_parent_frame.pack(fill="both", expand=True)
@@ -1828,6 +1876,17 @@ def on_selection(event):
 
 root = ThemedTk(theme="arc")
 root.geometry("500x400+390+140")
+root.title("Genesys Cloud Script")
+
+def resource_path(relative_path):
+    """Get absolute path to resource, works in dev and in PyInstaller exe."""
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)
+
+icon_path = resource_path("src/icons8-genesys-cloud-48.png")
+icon = tk.PhotoImage(file=icon_path)
+root.iconphoto(False, icon)
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2016,6 +2075,7 @@ def show_agent_performance_tab():
     user_management_agent_performance_parent_frame.pack(fill="both", expand=True, padx=5, pady=5)
     user_management_roles_and_permission_parent_frame.forget()
     user_management_queue_parent_frame.forget()
+    user_management_wrapup_codes_parent_frame.forget()
 
     user_menu_agent_performance_btn.config(font=("Segoe UI", 8, "bold"))
     user_menu_roles_and_permission_btn.config(font=("Segoe UI", 8))
@@ -2026,6 +2086,7 @@ def show_roles_and_permission_tab():
     user_management_agent_performance_parent_frame.forget()
     user_management_roles_and_permission_parent_frame.pack(fill="both", expand=True, padx=5, pady=5)
     user_management_queue_parent_frame.forget()
+    user_management_wrapup_codes_parent_frame.forget()
 
     user_menu_agent_performance_btn.config(font=("Segoe UI", 8))
     user_menu_roles_and_permission_btn.config(font=("Segoe UI", 8, "bold"))
@@ -2282,25 +2343,70 @@ settings_parent_frame = tk.Frame(root, bg="#273F4F")
 settings_child_frame = tk.Frame(settings_parent_frame, bg="#eaeaf2")
 settings_child_frame.pack(fill="both", expand=True, padx=5, pady=5)
 
-settings_header_frame = tk.LabelFrame(settings_child_frame,  bg="#eaeaf2", text="", font=("Segoe UI", 10))
-settings_header_frame.pack(fill="both", expand=True, padx=5, pady=5)
+settings_header_frame = tk.LabelFrame(settings_child_frame,  bg="#eaeaf2", fg="#273F4F", text=" Client Credentials ", font=("Segoe UI", 10, "bold"))
+settings_header_frame.pack(fill="x", padx=5, pady=5)
 
 client_id_frame = tk.Frame(settings_header_frame,  bg="#eaeaf2")
 client_id_frame.pack(fill="x", padx=5, pady=(10, 5))
 
-client_id_lbl = tk.Label(client_id_frame, bg="#eaeaf2", text="Client Id: ", font=("Segoe UI", 10))
+client_id_lbl = tk.Label(client_id_frame, bg="#eaeaf2", text="Client Id: ", font=("Segoe UI", 8))
 client_id_lbl.pack(side="left")
 
-client_id_entry = tk.Entry(client_id_frame, bg="#eaeaf2", font=("Segoe UI", 10), show="*")
+client_id_entry = tk.Entry(client_id_frame, bg="#eaeaf2", font=("Segoe UI", 8), show="*", width=40)
 client_id_entry.pack(side="right")
 
 client_secret_frame = tk.Frame(settings_header_frame, bg="#eaeaf2")
 client_secret_frame.pack(fill="x", padx=5, pady=(0, 5))
 
-client_secret_lbl = tk.Label(client_secret_frame, bg="#eaeaf2", text="Client Secret: ", font=("Segoe UI", 10))
+client_secret_lbl = tk.Label(client_secret_frame, bg="#eaeaf2", text="Client Secret: ", font=("Segoe UI", 8))
 client_secret_lbl.pack(side="left")
 
-client_secret_entry = tk.Entry(client_secret_frame, bg="#eaeaf2", font=("Segoe UI", 10), show="*")
+client_secret_entry = tk.Entry(client_secret_frame, bg="#eaeaf2", font=("Segoe UI", 8), show="*", width=40)
 client_secret_entry.pack(side="right")
+
+save_settings_frame = tk.Frame(settings_header_frame, bg="#eaeaf2")
+save_settings_frame.pack(fill="x", padx=5, pady=5)
+
+def toggle_save_button(*args):
+    if client_id_entry.get().strip() and client_secret_entry.get().strip():
+        test_oauth_credentials_btn.config(state="normal")
+    else:
+        test_oauth_credentials_btn.config(state="disabled")
+        show_organization_info_frame.forget()
+
+client_id_entry.bind("<KeyRelease>", toggle_save_button)
+client_secret_entry.bind("<KeyRelease>", toggle_save_button)
+
+test_oauth_credentials_btn = tk.Button(save_settings_frame, text=" Test ", font=("Segoe UI", 8), width=10, command=get_org_details, state="disabled")
+test_oauth_credentials_btn.pack(side="right", padx=5)
+
+show_organization_info_frame = tk.LabelFrame(settings_child_frame, bg="#eaeaf2", fg="#273F4F", text=" Organization Information ", font=("Segoe UI", 10, "bold"))
+
+org_id_frame = tk.Frame(show_organization_info_frame, bg="#eaeaf2")
+org_id_frame.pack(fill="x", padx=5, pady=5)
+
+org_id_lbl = tk.Label(org_id_frame, bg="#eaeaf2", text=" Organization ID: ", font=("Segoe UI", 8))
+org_id_lbl.pack(side="left")
+
+org_id_value = tk.Label(org_id_frame, bg="#eaeaf2", text="")
+org_id_value.pack(side="left")
+
+org_name_frame = tk.Frame(show_organization_info_frame, bg="#eaeaf2")
+org_name_frame.pack(fill="x", padx=5, pady=5)
+
+org_name_lbl = tk.Label(org_name_frame, bg="#eaeaf2", text=" Organization Name: ", font=("Segoe UI", 8))
+org_name_lbl.pack(side="left")
+
+org_name_value = tk.Label(org_name_frame, bg="#eaeaf2", text="")
+org_name_value.pack(side="left")
+
+org_domain_frame = tk.Frame(show_organization_info_frame, bg="#eaeaf2")
+org_domain_frame.pack(fill="x", padx=5, pady=5)
+
+org_domain_lbl = tk.Label(org_domain_frame, bg="#eaeaf2", text=" Organization Domain: ", font=("Segoe UI", 8))   
+org_domain_lbl.pack(side="left")
+
+org_domain_value = tk.Label(org_domain_frame, bg="#eaeaf2", text="")
+org_domain_value.pack(side="left")
 
 root.mainloop()
