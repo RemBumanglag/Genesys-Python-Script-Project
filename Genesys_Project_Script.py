@@ -56,45 +56,60 @@ def get_org_details():
         messagebox.showerror("Missing Credentials", "Client ID and Client Secret are required.")
         return
     
-    try:
-        # --- OAuth Token ---
-        auth_url = "https://login.mypurecloud.jp/oauth/token"
-        auth_header = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+    test_oauth_credentials_btn.config(text=" Loading... ", font=("Segoe UI", 8, "italic"))
+    test_oauth_credentials_btn.config(state="disabled")
+    
+    def task():
+        try:
+            # --- OAuth Token ---
+            auth_url = "https://login.mypurecloud.jp/oauth/token"
+            auth_header = base64.b64encode(
+                f"{client_id}:{client_secret}".encode()
+            ).decode()
 
-        token_response = requests.post(
-            auth_url,
-            headers={
-                "Authorization": f"Basic {auth_header}",
-                "Content-Type": "application/x-www-form-urlencoded"
-            },
-            data={"grant_type": "client_credentials"}
-        )
-        token_response.raise_for_status()
-        access_token = token_response.json()["access_token"]
+            token_response = requests.post(
+                auth_url,
+                headers={
+                    "Authorization": f"Basic {auth_header}",
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                data={"grant_type": "client_credentials"},
+                timeout=15
+            )
+            token_response.raise_for_status()
+            access_token = token_response.json()["access_token"]
 
-        # --- Get Org Details ---
-        org_response = requests.get(
-            "https://api.mypurecloud.jp/api/v2/organizations/me",
-            headers={"Authorization": f"Bearer {access_token}"}
-        )
-        org_response.raise_for_status()
+            # --- Get Org Details ---
+            org_response = requests.get(
+                "https://api.mypurecloud.jp/api/v2/organizations/me",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=15
+            )
+            org_response.raise_for_status()
+            org_data = org_response.json()
 
-        org_data = org_response.json()
-        org_id = org_data.get("id", "N/A")
-        org_name = org_data.get("name", "N/A")
-        org_domain = org_data.get("domain", "N/A")
+            # --- Update UI safely ---
+            root.after(0, lambda: update_org_ui(org_data))
 
-        # --- Assign to Labels ---
-        org_id_value.config(text=org_id)
-        org_name_value.config(text=org_name)
-        org_domain_value.config(text=org_domain)
+        except requests.exceptions.RequestException as e:
+            root.after(0, lambda: messagebox.showerror("API Error", str(e)))
+            root.after(0, show_organization_info_frame.forget)
+        finally:
+            root.after(0, stop_loading)
 
-        show_organization_info_frame.pack(fill="both", expand=True, padx=5, pady=(0, 5))
+    threading.Thread(target=task, daemon=True).start()
+    
+def update_org_ui(org_data):
+    org_id_value.config(text=org_data.get("id", "N/A"))
+    org_name_value.config(text=org_data.get("name", "N/A"))
+    org_domain_value.config(text=org_data.get("domain", "N/A"))
 
-    except requests.exceptions.RequestException as e:
-        messagebox.showerror("API Error", str(e))
-        show_organization_info_frame.forget()
+    show_organization_info_frame.pack(fill="both", expand=True, padx=5, pady=(0, 5))
 
+def stop_loading():
+    test_oauth_credentials_btn.config(text=" Authenticate ", font=("Segoe UI", 8))
+    test_oauth_credentials_btn.config(state="normal")
+    
 def show_home():
     home_parent_frame.pack(fill="both", expand=True)
     user_management_parent_frame.pack_forget()
@@ -1884,9 +1899,11 @@ def resource_path(relative_path):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.abspath("."), relative_path)
 
-icon_path = resource_path("src/icons8-genesys-cloud-48.png")
-icon = tk.PhotoImage(file=icon_path)
-root.iconphoto(False, icon)
+icon_path = resource_path("src/genesys_cloud_icon.png")
+icon_img = Image.open(icon_path)
+icon_tk = ImageTk.PhotoImage(icon_img)
+
+root.iconphoto(False, icon_tk)
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2377,7 +2394,7 @@ def toggle_save_button(*args):
 client_id_entry.bind("<KeyRelease>", toggle_save_button)
 client_secret_entry.bind("<KeyRelease>", toggle_save_button)
 
-test_oauth_credentials_btn = tk.Button(save_settings_frame, text=" Test ", font=("Segoe UI", 8), width=10, command=get_org_details, state="disabled")
+test_oauth_credentials_btn = tk.Button(save_settings_frame, text=" Authenticate ", font=("Segoe UI", 8), width=15, command=get_org_details, state="disabled")
 test_oauth_credentials_btn.pack(side="right", padx=5)
 
 show_organization_info_frame = tk.LabelFrame(settings_child_frame, bg="#eaeaf2", fg="#273F4F", text=" Organization Information ", font=("Segoe UI", 10, "bold"))
