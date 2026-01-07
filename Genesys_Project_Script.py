@@ -453,6 +453,83 @@ def generate_user_list_in_queue():
 
     # members_url = f"{api_base_url_users}/api/v2/routing/queues/{queue_id}/members?pageSize=100"
 
+def export_queues():
+    # --- Authenticate to Genesys Cloud ---
+    client_id = client_id_entry.get().strip()
+    client_secret = client_secret_entry.get().strip()
+
+    if not client_id or not client_secret:
+        messagebox.showerror("Missing Credentials", "Client ID and Client Secret cannot be empty.")
+        return
+
+    auth_url = "https://login.mypurecloud.jp/oauth/token"
+    auth_payload = {
+        "grant_type": "client_credentials",
+        "client_id": client_id,
+        "client_secret": client_secret
+    }
+
+    auth_response = requests.post(auth_url, data=auth_payload)
+    if auth_response.status_code != 200:
+        messagebox.showerror(
+            "Authentication Failed",
+            f"{auth_response.status_code}: {auth_response.text}"
+        )
+        return
+
+    access_token = auth_response.json().get("access_token")
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    api_base_url = "https://api.mypurecloud.jp/api/v2"
+
+    # --- Manila Time (consistent with your scripts) ---
+    MANILA = timezone(timedelta(hours=8))
+    today_manila = (datetime.now(timezone.utc) + timedelta(hours=8)).date()
+
+    # --- Retrieve ALL queues ---
+    all_queues = []
+    next_page = f"{api_base_url}/routing/queues?pageSize=100"
+
+    while next_page:
+        queue_response = requests.get(next_page, headers=headers)
+        if queue_response.status_code != 200:
+            messagebox.showerror(
+                "API Error",
+                f"Failed to retrieve queues: {queue_response.status_code}"
+            )
+            return
+
+        data = queue_response.json()
+        all_queues.extend(data.get("entities", []))
+
+        next_page = data.get("nextUri")
+        if next_page:
+            next_page = f"https://api.mypurecloud.jp{next_page}"
+
+        time.sleep(0.2)  # avoid rate limits
+
+    # --- Export to CSV ---
+    output_file = f"queues_{today_manila}.csv"
+
+    with open(output_file, mode="w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow(["id", "name", "division"])
+
+        for queue in all_queues:
+            writer.writerow([
+                queue.get("id", ""),
+                queue.get("name", ""),
+                queue.get("division", {}).get("name", "")
+            ])
+
+    messagebox.showinfo(
+        "Export Complete",
+        f"Successfully exported {len(all_queues)} queues.\n\nFile: {output_file}"
+    )
+
 def bulk_add_queue():
     popup = tk.Toplevel(root)
     popup.title("Bulk: Add Queues")
@@ -1445,6 +1522,83 @@ def refresh_wrapup_table():
         f"{len(wrapup_created_today)} wrapup codes created today were loaded into the table."
     )
 
+def export_wrapup_codes():
+    # --- Authenticate to Genesys Cloud ---
+    client_id = client_id_entry.get().strip()
+    client_secret = client_secret_entry.get().strip()
+
+    if not client_id or not client_secret:
+        messagebox.showerror("Missing Credentials", "Client ID and Client Secret cannot be empty.")
+        return
+
+    auth_url = "https://login.mypurecloud.jp/oauth/token"
+    auth_payload = {
+        "grant_type": "client_credentials",
+        "client_id": client_id,
+        "client_secret": client_secret
+    }
+
+    auth_response = requests.post(auth_url, data=auth_payload)
+    if auth_response.status_code != 200:
+        messagebox.showerror(
+            "Authentication Failed",
+            f"{auth_response.status_code}: {auth_response.text}"
+        )
+        return
+
+    access_token = auth_response.json().get("access_token")
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    api_base_url = "https://api.mypurecloud.jp/api/v2"
+
+    # --- Manila Time (kept for consistency with your scripts) ---
+    MANILA = timezone(timedelta(hours=8))
+    today_manila = (datetime.now(timezone.utc) + timedelta(hours=8)).date()
+
+    # --- Retrieve ALL wrap-up codes ---
+    all_wrapup = []
+    next_page = f"{api_base_url}/routing/wrapupcodes?pageSize=100"
+
+    while next_page:
+        wrapup_response = requests.get(next_page, headers=headers)
+        if wrapup_response.status_code != 200:
+            messagebox.showerror(
+                "API Error",
+                f"Failed to retrieve wrap-up codes: {wrapup_response.status_code}"
+            )
+            return
+
+        data = wrapup_response.json()
+        all_wrapup.extend(data.get("entities", []))
+
+        next_page = data.get("nextUri")
+        if next_page:
+            next_page = f"https://api.mypurecloud.jp{next_page}"
+
+        time.sleep(0.2)  # avoid rate limits
+
+    # --- Export to CSV ---
+    output_file = f"wrapup_codes_{today_manila}.csv"
+
+    with open(output_file, mode="w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow(["id", "name", "division"])
+
+        for code in all_wrapup:
+            writer.writerow([
+                code.get("id", ""),
+                code.get("name", ""),
+                code.get("division", {}).get("name", "")
+            ])
+
+    messagebox.showinfo(
+        "Export Complete",
+        f"Successfully exported {len(all_wrapup)} wrap-up codes.\n\nFile: {output_file}"
+    )
+
 def bulk_add_wrap_up():
     popup = tk.Toplevel(root)
     popup.title("Bulk: Add Wrap Up Codes")
@@ -1687,7 +1841,7 @@ def bulk_add_wrap_up():
             try:
                 with open(file_path, "w", newline="", encoding="utf-8") as f:
                     writer = csv.writer(f)
-                    writer.writerow(["queueName", "division"])
+                    writer.writerow(["wrapupName", "division"])
                 messagebox.showinfo("Template Exported", f"Template saved:\n{file_path}")
                 popup.destroy()
             except Exception as e:
@@ -2303,6 +2457,9 @@ refresh_button_frame.pack(fill="x")
 refresh_btn = tk.Button(refresh_button_frame, text=" Refresh ", font=("Segoe UI", 8), command=refresh_queue_table)
 refresh_btn.pack(side="right", padx=5)
 
+export_queue_btn = tk.Button(refresh_button_frame, text=" Export ", font=("Segoe UI", 8), command=export_queues)
+export_queue_btn.pack(side="right", padx=5) 
+
 queues_column = ("Queue Id", "Queue Name", "Division", "Date Created", "Created By", "Member Count")
 queues_table = ttk.Treeview(all_queues_table_frame, columns=queues_column, show="headings", height=20, selectmode="browse")
 
@@ -2344,6 +2501,9 @@ refresh_button_frame.pack(fill="x")
 
 refresh_btn = tk.Button(refresh_button_frame, text=" Refresh ", font=("Segoe UI", 8), command=refresh_wrapup_table)
 refresh_btn.pack(side="right", padx=5)
+
+export_wrapup_btn = tk.Button(refresh_button_frame, text=" Export ", font=("Segoe UI", 8), command=export_wrapup_codes)
+export_wrapup_btn.pack(side="right", padx=5)
 
 wrapup_codes_column = ("Wrapup ID", "Wrapup Name", "Division", "Date Created", "Created By")
 wrapup_codes_table = ttk.Treeview(all_wrapup_table_frame, columns=wrapup_codes_column, show="headings", height=20, selectmode="browse")
