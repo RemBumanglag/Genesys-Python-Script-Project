@@ -9,6 +9,32 @@ import re, sys, os, base64
 
 showDefaultTab = True
 
+# Genesys Cloud regions
+genesys_regions = {
+    "Japan (JP)": {
+        "api": "https://api.mypurecloud.jp",
+        "auth": "https://login.mypurecloud.jp/oauth/token"
+    },
+    "Singapore (SG)": {
+        "api": "https://api.apse1.pure.cloud",
+        "auth": "https://login.apse1.pure.cloud/oauth/token"
+    },
+    "Osaka (OS)":{
+        "api": "https://api.osaka1.pure.cloud",
+        "auth": "https://login.osaka1.pure.cloud/oauth/token"
+    }
+}
+
+def get_selected_region_urls():
+    region = region_var.get()
+    if region not in genesys_regions:
+        raise ValueError("Invalid Genesys region selected")
+
+    return (
+        genesys_regions[region]["auth"],
+        genesys_regions[region]["api"]
+    )
+
 def load_icon_from_web(url, size=(32, 32)):
     response = requests.get(url)
     if response.status_code != 200:
@@ -61,8 +87,10 @@ def get_org_details():
     
     def task():
         try:
+            # 🌍 Get region URLs
+            auth_url, api_base_url = get_selected_region_urls()
+
             # --- OAuth Token ---
-            auth_url = "https://login.mypurecloud.jp/oauth/token"
             auth_header = base64.b64encode(
                 f"{client_id}:{client_secret}".encode()
             ).decode()
@@ -81,7 +109,7 @@ def get_org_details():
 
             # --- Get Org Details ---
             org_response = requests.get(
-                "https://api.mypurecloud.jp/api/v2/organizations/me",
+                f"{api_base_url}/api/v2/organizations/me",
                 headers={"Authorization": f"Bearer {access_token}"},
                 timeout=15
             )
@@ -218,6 +246,10 @@ def safe_api_get(url, headers, base_delay=0.3):
 
 def generate_user_list():
     def task():
+
+        # 🌍 Get region URLs
+        auth_url, api_base_url = get_selected_region_urls()
+
         try:
             # --- Disable UI while running ---
             for widget in root.winfo_children():
@@ -260,8 +292,6 @@ def generate_user_list():
             setup_treeview(user_body_frame, selected_columns)
 
             # --- Authenticate ---
-            api_base_url = "https://login.mypurecloud.jp"
-            auth_url = f"{api_base_url}/oauth/token"
             auth_payload = {
                 "grant_type": "client_credentials",
                 "client_id": client_id,
@@ -275,7 +305,6 @@ def generate_user_list():
                 return
 
             access_token = response.json().get("access_token")
-            api_base_url_users = "https://api.mypurecloud.jp"
             headers = {
                 "Authorization": f"Bearer {access_token}",
                 "Content-Type": "application/json"
@@ -283,7 +312,7 @@ def generate_user_list():
 
             # --- Fetch all users ---
             state_param = "any"
-            users_url = f"{api_base_url_users}/api/v2/users?state={state_param}&expand=dateLastLogin,lastTokenIssued"
+            users_url = f"{api_base_url}/api/v2/users?state={state_param}&expand=dateLastLogin,lastTokenIssued"
             all_users = []
 
             while users_url:
@@ -293,7 +322,7 @@ def generate_user_list():
                     all_users.extend(data.get("entities", []))
                     users_url = data.get("nextUri")
                     if users_url:
-                        users_url = f"{api_base_url_users}{users_url}"
+                        users_url = f"{api_base_url}{users_url}"
                 else:
                     messagebox.showerror("Error", f"Failed to retrieve users: {response.status_code}\n{response.text}")
                     popup.destroy()
@@ -321,7 +350,7 @@ def generate_user_list():
                 user_id = user.get("id")
 
                 # --- Department ---
-                user_details_url = f"{api_base_url_users}/api/v2/users/{user_id}"
+                user_details_url = f"{api_base_url}/api/v2/users/{user_id}"
                 user_details_response = safe_api_get(user_details_url, headers)
 
                 if user_details_response.status_code == 200:
@@ -337,17 +366,17 @@ def generate_user_list():
                     user["department"] = "Error retrieving department"
 
                 # --- Licenses ---
-                license_url = f"{api_base_url_users}/api/v2/license/users/{user_id}"
+                license_url = f"{api_base_url}/api/v2/license/users/{user_id}"
                 license_response = safe_api_get(license_url, headers)
                 user["licenseList"] = [lic.get("description", lic.get("id")) for lic in license_response.json().get("licenses", [])] if license_response.status_code == 200 else ["Error retrieving licenses"]
 
                 # --- Roles ---
-                roles_url = f"{api_base_url_users}/api/v2/users/{user_id}/roles"
+                roles_url = f"{api_base_url}/api/v2/users/{user_id}/roles"
                 roles_response = safe_api_get(roles_url, headers)
                 user["roleList"] = [role.get("name", role.get("id")) for role in roles_response.json().get("roles", [])] if roles_response.status_code == 200 else ["Error retrieving roles"]
 
                 # --- Queues ---
-                queues_url = f"{api_base_url_users}/api/v2/users/{user_id}/queues"
+                queues_url = f"{api_base_url}/api/v2/users/{user_id}/queues"
                 queues_response = safe_api_get(queues_url, headers)
                 user["queueList"] = [queue.get("name", queue.get("id")) for queue in queues_response.json().get("entities", [])] if queues_response.status_code == 200 else ["Error retrieving queues"]
 
@@ -427,34 +456,36 @@ def generate_user_list_in_queue():
     client_id = client_id_entry.get().strip()
     client_secret = client_secret_entry.get().strip()
 
+    # 🌍 Get region-based URLs (ONLY SOURCE OF TRUTH)
+    auth_url = get_selected_region_urls()
+
     if not client_id or not client_secret:
         messagebox.showerror("Missing Credentials", "Client ID and Client Secret cannot be empty.")
         return
 
-    api_base_url = "https://login.mypurecloud.jp"
-    auth_url = f"{api_base_url}/oauth/token"
-    auth_payload = {
-        "grant_type": "client_credentials",
-        "client_id": client_id,
-        "client_secret": client_secret
-    }
+    try:
 
-    response = requests.post(auth_url, data=auth_payload)
-    if response.status_code != 200:
-        messagebox.showerror("Error", f"Failed to authenticate: {response.status_code}\n{response.text}")
-        return
+        # --- OAuth Token ---
+        auth_payload = {
+            "grant_type": "client_credentials",
+            "client_id": client_id,
+            "client_secret": client_secret
+        }
 
-    access_token = response.json().get("access_token")
-    api_base_url_users = "https://api.mypurecloud.jp"
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json"
-    }
+        auth_response = requests.post(auth_url, data=auth_payload, timeout=15)
+        auth_response.raise_for_status()
 
-    # members_url = f"{api_base_url_users}/api/v2/routing/queues/{queue_id}/members?pageSize=100"
+        access_token = auth_response.json().get("access_token")
+
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+    except requests.exceptions.RequestException as e:
+        messagebox.showerror("API Error", str(e))
 
 def export_queues():
-    # --- Authenticate to Genesys Cloud ---
+    # --- Credentials ---
     client_id = client_id_entry.get().strip()
     client_secret = client_secret_entry.get().strip()
 
@@ -462,73 +493,68 @@ def export_queues():
         messagebox.showerror("Missing Credentials", "Client ID and Client Secret cannot be empty.")
         return
 
-    auth_url = "https://login.mypurecloud.jp/oauth/token"
-    auth_payload = {
-        "grant_type": "client_credentials",
-        "client_id": client_id,
-        "client_secret": client_secret
-    }
+    try:
+        # 🌍 Get region-based URLs
+        auth_url, api_base_url = get_selected_region_urls()
 
-    auth_response = requests.post(auth_url, data=auth_payload)
-    if auth_response.status_code != 200:
-        messagebox.showerror(
-            "Authentication Failed",
-            f"{auth_response.status_code}: {auth_response.text}"
+        # --- Authenticate ---
+        auth_payload = {
+            "grant_type": "client_credentials",
+            "client_id": client_id,
+            "client_secret": client_secret
+        }
+
+        auth_response = requests.post(auth_url, data=auth_payload, timeout=15)
+        auth_response.raise_for_status()
+
+        access_token = auth_response.json().get("access_token")
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+
+        # --- Manila Time ---
+        MANILA = timezone(timedelta(hours=8))
+        today_manila = (datetime.now(timezone.utc) + timedelta(hours=8)).date()
+
+        # --- Retrieve ALL queues ---
+        all_queues = []
+        next_page = f"{api_base_url}/api/v2/routing/queues?pageSize=100"
+
+        while next_page:
+            queue_response = requests.get(next_page, headers=headers, timeout=15)
+            queue_response.raise_for_status()
+
+            data = queue_response.json()
+            all_queues.extend(data.get("entities", []))
+
+            next_page = data.get("nextUri")
+            if next_page:
+                next_page = f"{api_base_url.split('/api')[0]}{next_page}"
+
+            time.sleep(0.2)  # avoid rate limits
+
+        # --- Export to CSV ---
+        output_file = f"queues_{today_manila}.csv"
+
+        with open(output_file, mode="w", newline="", encoding="utf-8") as file:
+            writer = csv.writer(file)
+            writer.writerow(["id", "name", "division"])
+
+            for queue in all_queues:
+                writer.writerow([
+                    queue.get("id", ""),
+                    queue.get("name", ""),
+                    queue.get("division", {}).get("name", "")
+                ])
+
+        messagebox.showinfo(
+            "Export Complete",
+            f"Successfully exported {len(all_queues)} queues.\n\nFile: {output_file}"
         )
-        return
 
-    access_token = auth_response.json().get("access_token")
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json"
-    }
-
-    api_base_url = "https://api.mypurecloud.jp/api/v2"
-
-    # --- Manila Time (consistent with your scripts) ---
-    MANILA = timezone(timedelta(hours=8))
-    today_manila = (datetime.now(timezone.utc) + timedelta(hours=8)).date()
-
-    # --- Retrieve ALL queues ---
-    all_queues = []
-    next_page = f"{api_base_url}/routing/queues?pageSize=100"
-
-    while next_page:
-        queue_response = requests.get(next_page, headers=headers)
-        if queue_response.status_code != 200:
-            messagebox.showerror(
-                "API Error",
-                f"Failed to retrieve queues: {queue_response.status_code}"
-            )
-            return
-
-        data = queue_response.json()
-        all_queues.extend(data.get("entities", []))
-
-        next_page = data.get("nextUri")
-        if next_page:
-            next_page = f"https://api.mypurecloud.jp{next_page}"
-
-        time.sleep(0.2)  # avoid rate limits
-
-    # --- Export to CSV ---
-    output_file = f"queues_{today_manila}.csv"
-
-    with open(output_file, mode="w", newline="", encoding="utf-8") as file:
-        writer = csv.writer(file)
-        writer.writerow(["id", "name", "division"])
-
-        for queue in all_queues:
-            writer.writerow([
-                queue.get("id", ""),
-                queue.get("name", ""),
-                queue.get("division", {}).get("name", "")
-            ])
-
-    messagebox.showinfo(
-        "Export Complete",
-        f"Successfully exported {len(all_queues)} queues.\n\nFile: {output_file}"
-    )
+    except requests.exceptions.RequestException as e:
+        messagebox.showerror("API Error", str(e))
 
 def bulk_add_queue():
     popup = tk.Toplevel(root)
@@ -537,6 +563,9 @@ def bulk_add_queue():
     popup.resizable(False, False)
     popup.attributes("-topmost", True)
     popup.grab_set()  # Prevent focus loss
+
+    # 🌍 Get region URLs
+    auth_url, api_base_url = get_selected_region_urls()
 
     # --- Frame container ---
     popup_parent_frame = tk.LabelFrame(popup, bg="#eaeaf2", text="", padx=10, pady=10)
@@ -589,7 +618,6 @@ def bulk_add_queue():
             return
         popup.destroy()
 
-        auth_url = "https://login.mypurecloud.jp/oauth/token"
         auth_payload = {
             "grant_type": "client_credentials",
             "client_id": client_id,
@@ -607,8 +635,7 @@ def bulk_add_queue():
             "Content-Type": "application/json"
         }
 
-        api_base_url = "https://api.mypurecloud.jp/api/v2"
-        create_queue_url = f"{api_base_url}/routing/queues"
+        create_queue_url = f"{api_base_url}/api/v2/routing/queues"
 
         success_count = 0
         exist_count = 0
@@ -622,7 +649,7 @@ def bulk_add_queue():
             # --- Get division ID if provided ---
             division_id = None
             if division_name:
-                div_response = requests.get(f"{api_base_url}/authorization/divisions", headers=headers)
+                div_response = requests.get(f"{api_base_url}/api/v2/authorization/divisions", headers=headers)
                 if div_response.status_code == 200:
                     div_results = div_response.json().get("entities", [])
                     for d in div_results:
@@ -631,7 +658,7 @@ def bulk_add_queue():
                             break
 
             # --- Check if queue already exists ---
-            check_url = f"{api_base_url}/routing/queues?name={wrap_up_name}"
+            check_url = f"{api_base_url}/api/v2/routing/queues?name={wrap_up_name}"
             check_response = requests.get(check_url, headers=headers)
             time.sleep(0.2)
 
@@ -675,7 +702,7 @@ def bulk_add_queue():
 
         # --- Step 2: Retrieve all queues from Genesys (and filter by today Manila date) ---
         all_queues = []
-        next_page = f"{api_base_url}/routing/queues?pageSize=100"
+        next_page = f"{api_base_url}/api/v2/routing/queues?pageSize=100"
 
         from datetime import datetime, timezone, timedelta
 
@@ -693,7 +720,7 @@ def bulk_add_queue():
             all_queues.extend(data.get("entities", []))
             next_page = data.get("nextUri")
             if next_page:
-                next_page = f"https://api.mypurecloud.jp{next_page}"
+                next_page = f"{api_base_url}/api/v2/{next_page}"
             time.sleep(0.2)
 
         # --- Filter queues created today (Manila) ---
@@ -735,7 +762,7 @@ def bulk_add_queue():
                     created_by_name = user_cache[created_by_id]
                 else:
                     try:
-                        user_resp = requests.get(f"{api_base_url}/users/{created_by_id}", headers=headers)
+                        user_resp = requests.get(f"{api_base_url}/api/v2/users/{created_by_id}", headers=headers)
                         time.sleep(0.15)
                         if user_resp.status_code == 200:
                             created_by_name = user_resp.json().get("name", "")
@@ -904,11 +931,13 @@ def bulk_assign_queue():
         client_id = client_id_entry.get().strip()
         client_secret = client_secret_entry.get().strip()
 
+        # 🌍 Get region URLs
+        auth_url, api_base_url = get_selected_region_urls()
+
         if not client_id or not client_secret:
             messagebox.showerror("Missing Credentials", "Client ID and Client Secret cannot be empty.")
             return
 
-        auth_url = "https://login.mypurecloud.jp/oauth/token"
         auth_payload = {
             "grant_type": "client_credentials",
             "client_id": client_id,
@@ -926,8 +955,6 @@ def bulk_assign_queue():
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
         }
-
-        api_base_url = "https://api.mypurecloud.jp/api/v2"
 
         # --- Create popup for progress ---
         progress_popup = tk.Toplevel(root)
@@ -958,7 +985,7 @@ def bulk_assign_queue():
                 # Genesys endpoint supports up to 100 users per request
                 for i in range(0, len(user_ids), 100):
                     batch = user_ids[i:i + 100]
-                    url = f"{api_base_url}/routing/queues/{queue_id}/members"
+                    url = f"{api_base_url}/api/v2/routing/queues/{queue_id}/members"
                     payload = [{"id": uid, "type": "USER"} for uid in batch]
 
                     try:
@@ -1099,12 +1126,14 @@ def bulk_assign_wrapup():
         client_id = client_id_entry.get().strip()
         client_secret = client_secret_entry.get().strip()
 
+        # 🌍 Get region URLs
+        auth_url, api_base_url = get_selected_region_urls()
+
         if not client_id or not client_secret:
             messagebox.showerror("Missing Credentials",
                                  "Client ID and Client Secret cannot be empty.")
             return
 
-        auth_url = "https://login.mypurecloud.jp/oauth/token"
         auth_payload = {
             "grant_type": "client_credentials",
             "client_id": client_id,
@@ -1122,7 +1151,6 @@ def bulk_assign_wrapup():
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
         }
-        api_base = "https://api.mypurecloud.jp/api/v2"
 
         # ------------------------
         # PROGRESS POPUP
@@ -1160,7 +1188,7 @@ def bulk_assign_wrapup():
                 for wid in wrapup_ids:
                     try:
                         resp = requests.get(
-                            f"{api_base}/routing/wrapupcodes",
+                            f"{api_base_url}/api/v2/routing/wrapupcodes",
                             headers=headers,
                             params={"id": wid.strip()}
                         )
@@ -1180,7 +1208,7 @@ def bulk_assign_wrapup():
                 # Bulk POST to assign wrapups
                 try:
                     resp = requests.post(
-                        f"{api_base}/routing/queues/{queue_id}/wrapupcodes",
+                        f"{api_base_url}/api/v2/routing/queues/{queue_id}/wrapupcodes",
                         headers=headers,
                         json=valid_wrapup_ids
                     )
@@ -1264,12 +1292,13 @@ def refresh_queue_table():
 # --- Authenticate to Genesys Cloud ---
     client_id = client_id_entry.get().strip()
     client_secret = client_secret_entry.get().strip()
+    # 🌍 Get region URLs
+    auth_url, api_base_url = get_selected_region_urls()
 
     if not client_id or not client_secret:
         messagebox.showerror("Missing Credentials", "Client ID and Client Secret cannot be empty.")
         return
 
-    auth_url = "https://login.mypurecloud.jp/oauth/token"
     auth_payload = {
         "grant_type": "client_credentials",
         "client_id": client_id,
@@ -1287,10 +1316,8 @@ def refresh_queue_table():
         "Content-Type": "application/json"
     }
 
-    api_base_url = "https://api.mypurecloud.jp/api/v2"
-
     all_queues = []
-    next_page = f"{api_base_url}/routing/queues?pageSize=100"
+    next_page = f"{api_base_url}/api/v2/routing/queues?pageSize=100"
 
     from datetime import datetime, timezone, timedelta
 
@@ -1308,7 +1335,7 @@ def refresh_queue_table():
         all_queues.extend(data.get("entities", []))
         next_page = data.get("nextUri")
         if next_page:
-            next_page = f"https://api.mypurecloud.jp{next_page}"
+            next_page = f"{api_base_url}{next_page}"
         time.sleep(0.2)
 
     # --- Filter queues created today (Manila) ---
@@ -1350,7 +1377,7 @@ def refresh_queue_table():
                 created_by_name = user_cache[created_by_id]
             else:
                 try:
-                    user_resp = requests.get(f"{api_base_url}/users/{created_by_id}", headers=headers)
+                    user_resp = requests.get(f"{api_base_url}/api/v2/users/{created_by_id}", headers=headers)
                     time.sleep(0.15)
                     if user_resp.status_code == 200:
                         created_by_name = user_resp.json().get("name", "")
@@ -1406,11 +1433,13 @@ def refresh_wrapup_table():
     client_id = client_id_entry.get().strip()
     client_secret = client_secret_entry.get().strip()
 
+    # 🌍 Get region URLs
+    auth_url, api_base_url = get_selected_region_urls()
+
     if not client_id or not client_secret:
         messagebox.showerror("Missing Credentials", "Client ID and Client Secret cannot be empty.")
         return
 
-    auth_url = "https://login.mypurecloud.jp/oauth/token"
     auth_payload = {
         "grant_type": "client_credentials",
         "client_id": client_id,
@@ -1428,10 +1457,8 @@ def refresh_wrapup_table():
         "Content-Type": "application/json"
     }
 
-    api_base_url = "https://api.mypurecloud.jp/api/v2"
-
     all_wrapup = []
-    next_page = f"{api_base_url}/routing/wrapupcodes?pageSize=100"
+    next_page = f"{api_base_url}/api/v2/routing/wrapupcodes?pageSize=100"
 
     from datetime import datetime, timezone, timedelta
     MANILA = timezone(timedelta(hours=8))
@@ -1450,7 +1477,7 @@ def refresh_wrapup_table():
 
         next_page = data.get("nextUri")
         if next_page:
-            next_page = f"https://api.mypurecloud.jp{next_page}"
+            next_page = f"{api_base_url}{next_page}"
 
         time.sleep(0.2)
 
@@ -1485,7 +1512,7 @@ def refresh_wrapup_table():
             if created_by_id in user_cache:
                 created_by_name = user_cache[created_by_id]
             else:
-                user_resp = requests.get(f"{api_base_url}/users/{created_by_id}", headers=headers)
+                user_resp = requests.get(f"{api_base_url}/api/v2/users/{created_by_id}", headers=headers)
                 time.sleep(0.15)
                 if user_resp.status_code == 200:
                     created_by_name = user_resp.json().get("name", "")
@@ -1527,11 +1554,13 @@ def export_wrapup_codes():
     client_id = client_id_entry.get().strip()
     client_secret = client_secret_entry.get().strip()
 
+    # 🌍 Get region URLs
+    auth_url, api_base_url = get_selected_region_urls()
+
     if not client_id or not client_secret:
         messagebox.showerror("Missing Credentials", "Client ID and Client Secret cannot be empty.")
         return
 
-    auth_url = "https://login.mypurecloud.jp/oauth/token"
     auth_payload = {
         "grant_type": "client_credentials",
         "client_id": client_id,
@@ -1552,15 +1581,13 @@ def export_wrapup_codes():
         "Content-Type": "application/json"
     }
 
-    api_base_url = "https://api.mypurecloud.jp/api/v2"
-
     # --- Manila Time (kept for consistency with your scripts) ---
     MANILA = timezone(timedelta(hours=8))
     today_manila = (datetime.now(timezone.utc) + timedelta(hours=8)).date()
 
     # --- Retrieve ALL wrap-up codes ---
     all_wrapup = []
-    next_page = f"{api_base_url}/routing/wrapupcodes?pageSize=100"
+    next_page = f"{api_base_url}/api/v2/routing/wrapupcodes?pageSize=100"
 
     while next_page:
         wrapup_response = requests.get(next_page, headers=headers)
@@ -1576,7 +1603,7 @@ def export_wrapup_codes():
 
         next_page = data.get("nextUri")
         if next_page:
-            next_page = f"https://api.mypurecloud.jp{next_page}"
+            next_page = f"{api_base_url}{next_page}"
 
         time.sleep(0.2)  # avoid rate limits
 
@@ -1648,11 +1675,14 @@ def bulk_add_wrap_up():
          # --- Authenticate to Genesys Cloud ---
         client_id = client_id_entry.get().strip()
         client_secret = client_secret_entry.get().strip()
+
+        # 🌍 Get region URLs
+        auth_url, api_base_url = get_selected_region_urls()
+
         if not client_id or not client_secret:
             messagebox.showerror("Missing Credentials", "Client ID and Client Secret cannot be empty.")
             return
         popup.destroy()
-        auth_url = "https://login.mypurecloud.jp/oauth/token"
         auth_payload = {
             "grant_type": "client_credentials",
             "client_id": client_id,
@@ -1667,8 +1697,7 @@ def bulk_add_wrap_up():
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
         }
-        api_base_url = "https://api.mypurecloud.jp/api/v2"
-        create_queue_url = f"{api_base_url}/routing/wrapupcodes"
+        create_wrapup_url = f"{api_base_url}/api/v2/routing/wrapupcodes"
         success_count = 0
         exist_count = 0
         fail_count = 0
@@ -1681,7 +1710,7 @@ def bulk_add_wrap_up():
             # --- Get division ID if provided ---
             division_id = None
             if division_name:
-                div_response = requests.get(f"{api_base_url}/authorization/divisions", headers=headers)
+                div_response = requests.get(f"{api_base_url}/api/v2/authorization/divisions", headers=headers)
                 if div_response.status_code == 200:
                     div_results = div_response.json().get("entities", [])
                     for d in div_results:
@@ -1690,7 +1719,7 @@ def bulk_add_wrap_up():
                             break
                 
             # --- Check if wrap up already exist ---
-            check_url = f"{api_base_url}/routing/wrapupcodes?name={wrap_up_name}"
+            check_url = f"{api_base_url}/api/v2/routing/wrapupcodes?name={wrap_up_name}"
             check_response = requests.get(check_url, headers=headers)
             time.sleep(0.2)
 
@@ -1707,7 +1736,7 @@ def bulk_add_wrap_up():
                 body["division"] = {"id": division_id}
 
             # --- Create queue ---
-            response = requests.post(create_queue_url, headers=headers, json=body)
+            response = requests.post(create_wrapup_url, headers=headers, json=body)
             time.sleep(0.3)
             if response.status_code in (200, 201):
                 success_count += 1
@@ -1733,7 +1762,7 @@ def bulk_add_wrap_up():
 
         # --- Step 2: Retrieve all wrapup from Genesys (and filter by today Manila date) ---
         all_wrapup = []
-        next_page = f"{api_base_url}/routing/wrapupcodes?pageSize=100"
+        next_page = f"{api_base_url}/api/v2/routing/wrapupcodes?pageSize=100"
         from datetime import datetime, timezone, timedelta
         MANILA = timezone(timedelta(hours=8))
         # today's date in Asia/Manila
@@ -1747,7 +1776,7 @@ def bulk_add_wrap_up():
             all_wrapup.extend(data.get("entities", []))
             next_page = data.get("nextUri")
             if next_page:
-                next_page = f"https://api.mypurecloud.jp{next_page}"
+                next_page = f"{api_base_url}{next_page}"
             time.sleep(0.2)
 
         # --- Filter wrapup created today (Manila) ---
@@ -1785,7 +1814,7 @@ def bulk_add_wrap_up():
                     created_by_name = user_cache[created_by_id]
                 else:
                     try:
-                        user_resp = requests.get(f"{api_base_url}/users/{created_by_id}", headers=headers)
+                        user_resp = requests.get(f"{api_base_url}/api/v2/users/{created_by_id}", headers=headers)
                         time.sleep(0.15)
                         if user_resp.status_code == 200:
                             created_by_name = user_resp.json().get("name", "")
@@ -1886,6 +1915,9 @@ def get_roles_and_permissions():
             client_secret = client_secret_entry.get().strip()
             user_id = user_id_entry.get().strip()
 
+            # 🌍 Get region URLs
+            auth_url, api_base_url = get_selected_region_urls()
+
             if not client_id or not client_secret or not user_id:
                 messagebox.showerror("Missing Fields", "Client ID, Client Secret, and User ID cannot be empty.")
                 # Re-enable UI
@@ -1920,7 +1952,6 @@ def get_roles_and_permissions():
                 roles_and_permission_table.delete(row)
 
             # --- Authenticate ---
-            auth_url = "https://login.mypurecloud.jp/oauth/token"
             auth_payload = {
                 "grant_type": "client_credentials",
                 "client_id": client_id,
@@ -1945,13 +1976,13 @@ def get_roles_and_permissions():
             }
 
             # --- Get user name ---
-            user_url = f"https://api.mypurecloud.jp/api/v2/users/{user_id}"
+            user_url = f"{api_base_url}/api/v2/users/{user_id}"
             user_response = requests.get(user_url, headers=headers)
             time.sleep(0.2)
             user_name = user_response.json().get("name", "N/A") if user_response.status_code == 200 else "N/A"
 
             # --- Get roles ---
-            roles_url = f"https://api.mypurecloud.jp/api/v2/users/{user_id}/roles"
+            roles_url = f"{api_base_url}/api/v2/users/{user_id}/roles"
             roles_response = requests.get(roles_url, headers=headers)
             time.sleep(0.2)
 
@@ -1979,7 +2010,7 @@ def get_roles_and_permissions():
 
                 role_id = role.get("id", "N/A")
 
-                role_details_url = f"https://api.mypurecloud.jp/api/v2/authorization/roles/{role_id}"
+                role_details_url = f"{api_base_url}/api/v2/authorization/roles/{role_id}"
                 role_details_response = requests.get(role_details_url, headers=headers)
                 time.sleep(0.2)
 
@@ -2540,6 +2571,17 @@ client_secret_lbl.pack(side="left")
 
 client_secret_entry = tk.Entry(client_secret_frame, bg="#eaeaf2", font=("Segoe UI", 8), show="*", width=40)
 client_secret_entry.pack(side="right")
+
+region_frame = tk.Frame(settings_header_frame, bg="#eaeaf2")
+region_frame.pack(fill="x", padx=5)  
+
+region_label = tk.Label(region_frame, text="Client Region: ", bg="#eaeaf2", font=("Segoe UI", 8))
+region_label.pack(side="left")
+
+region_var = tk.StringVar()
+region_dropdown = ttk.Combobox(region_frame, textvariable=region_var, values=list(genesys_regions.keys()), state="readonly", width=20, font=("Segoe UI", 8), justify="center")
+region_dropdown.pack(side="right")
+region_dropdown.current(0)
 
 save_settings_frame = tk.Frame(settings_header_frame, bg="#eaeaf2")
 save_settings_frame.pack(fill="x", padx=5, pady=5)
