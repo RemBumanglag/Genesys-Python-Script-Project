@@ -599,10 +599,10 @@ def bulk_add_queue():
             with open(file_path, newline='', encoding='utf-8') as csvfile:
                 reader = csv.DictReader(csvfile)
                 for row in reader:
-                    wrap_up_name = row.get("queueName", "").strip()
+                    queue_name = row.get("queueName", "").strip()
                     division = row.get("division", "").strip()
-                    if wrap_up_name:
-                        queue_data.append({"name": wrap_up_name, "division": division})
+                    if queue_name:
+                        queue_data.append({"name": queue_name, "division": division})
         except Exception as e:
             messagebox.showerror("Error", f"Failed to import or process file:\n{str(e)}")
             return
@@ -1658,10 +1658,12 @@ def bulk_add_wrap_up():
             return
         popup.destroy()
         wrap_up_data = []
-        # Read queue data from CSV file
+
+        # Read wrapup data from CSV file
         try:
             with open(file_path, newline='', encoding='utf-8') as csvfile:
                 reader = csv.DictReader(csvfile)
+
                 for row in reader:
                     wrap_up_name = row.get("wrapUpName", "").strip()
                     division = row.get("division", "").strip()
@@ -1670,7 +1672,7 @@ def bulk_add_wrap_up():
         except Exception as e:
             messagebox.showerror("Error", f"Failed to import or process file:\n{str(e)}")
             return
-        messagebox.showinfo("File Imported", f"Imported {len(wrap_up_data)} queues from:\n{file_path}")
+        messagebox.showinfo("File Imported", f"Imported {len(wrap_up_data)} wrapup from:\n{file_path}")
 
          # --- Authenticate to Genesys Cloud ---
         client_id = client_id_entry.get().strip()
@@ -1725,8 +1727,8 @@ def bulk_add_wrap_up():
 
             if check_response.status_code == 200:
                 results = check_response.json().get("entities", [])
-                if any(qr.get("name", "").lower() == division_name.lower() for qr in results):
-                    print(f"⚠️ Queue already exists: {division_name}")
+                if any(qr.get("name", "").lower() == wrap_up_name.lower() for qr in results):
+                    print(f"⚠️ Wrapup already exists: {wrap_up_name}")
                     exist_count += 1
                     continue
 
@@ -1735,9 +1737,10 @@ def bulk_add_wrap_up():
             if division_id:
                 body["division"] = {"id": division_id}
 
-            # --- Create queue ---
+            # --- Create wrapup ---
             response = requests.post(create_wrapup_url, headers=headers, json=body)
             time.sleep(0.3)
+
             if response.status_code in (200, 201):
                 success_count += 1
                 print(f"✅ Wrapup created: {wrap_up_name}")
@@ -1870,7 +1873,7 @@ def bulk_add_wrap_up():
             try:
                 with open(file_path, "w", newline="", encoding="utf-8") as f:
                     writer = csv.writer(f)
-                    writer.writerow(["wrapupName", "division"])
+                    writer.writerow(["wrapUpName", "division"])
                 messagebox.showinfo("Template Exported", f"Template saved:\n{file_path}")
                 popup.destroy()
             except Exception as e:
@@ -1901,6 +1904,235 @@ def bulk_add_wrap_up():
     )
     export_btn.pack(pady=5)
     return popup
+
+REQUIRED_PERMISSIONS = {
+    "authorization:division:add",
+    "authorization:division:delete",
+    "authorization:division:edit",
+    "authorization:grant:add",
+    "authorization:grant:delete",
+    "authorization:orgTrusteeUser:add",
+    "authorization:orgTrusteeUser:delete",
+    "authorization:orgTrusteeUser:edit",
+    "authorization:orgTrustee:add",
+    "authorization:orgTrustee:delete",
+    "authorization:orgTrustee:edit",
+    "authorization:orgTrusteeGroup:add",
+    "authorization:orgTrusteeGroup:delete",
+    "authorization:orgTrusteeGroup:edit",
+    "authorization:policy:add",
+    "authorization:policy:delete",
+    "authorization:policy:edit",
+    "authorization:role:add",
+    "authorization:role:delete",
+    "authorization:role:edit",
+    "authorization:settings:edit",
+    "authorization:settings:delete",
+    "directory:organization:admin",
+    "directory:user:add",
+    "directory:user:delete",
+    "directory:user:setPassword",
+    "oauth:client:add",
+    "oauth:client:authorize",
+    "oauth:client:delete",
+    "sso:provider:add",
+    "sso:provider:delete",
+    "sso:provider:edit",
+}
+
+def get_all_roles_and_permissions():
+    def task():
+        popup = None
+        csv_rows = [] 
+        try:
+            # --- Disable inputs ---
+            for widget in root.winfo_children():
+                if isinstance(widget, (tk.Button, ttk.Combobox, tk.Entry)):
+                    widget.configure(state="disabled")
+
+            # --- Credentials ---
+            client_id = client_id_entry.get().strip()
+            client_secret = client_secret_entry.get().strip()
+
+            if not client_id or not client_secret:
+                messagebox.showerror("Missing Fields", "Client ID and Client Secret cannot be empty.")
+                return
+
+            auth_url, api_base_url = get_selected_region_urls()
+
+            # --- Loading popup ---
+            popup = tk.Toplevel(root)
+            popup.title("Loading")
+            popup.geometry("340x160")
+            popup.resizable(False, False)
+            popup.grab_set()
+
+            tk.Label(popup, text="Retrieving roles and permissions...", font=("Arial", 11)).pack(pady=10)
+            progress = ttk.Progressbar(popup, mode="determinate")
+            progress.pack(pady=5, padx=20, fill="x")
+
+            counter_label = tk.Label(popup, text="", font=("Arial", 9), fg="gray")
+            counter_label.pack(pady=5)
+
+            # --- Authenticate ---
+            auth_response = requests.post(
+                auth_url,
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": client_id,
+                    "client_secret": client_secret
+                }
+            )
+
+            if auth_response.status_code != 200:
+                messagebox.showerror("Auth Error", auth_response.text)
+                return
+
+            access_token = auth_response.json().get("access_token")
+            headers = {"Authorization": f"Bearer {access_token}"}
+
+            def fetch_all_roles(api_base_url, headers):
+                all_roles = []
+                # start with first page URL
+                page_number = 1
+                page_size = 100
+                url = f"{api_base_url}/api/v2/authorization/roles?pageSize={page_size}&pageNumber={page_number}"
+    
+                while url:
+                    try:
+                        resp = safe_api_get(url, headers)
+                    except Exception:
+                        resp = requests.get(url, headers=headers)
+    
+                    if resp.status_code != 200:
+                        break
+    
+                    data = resp.json()
+                    # support both possible response shapes: "roles" or generic "entities"
+                    page_roles = data.get("roles") or data.get("entities") or []
+                    if isinstance(page_roles, list):
+                        all_roles.extend(page_roles)
+    
+                    # prefer nextUri style paging when present
+                    next_uri = data.get("nextUri")
+                    if next_uri:
+                        # nextUri may be relative
+                        if next_uri.startswith("http"):
+                            url = next_uri
+                        else:
+                            # ensure proper base for relative nextUri
+                            if next_uri.startswith("/"):
+                                url = f"{api_base_url}{next_uri}"
+                            else:
+                                url = f"{api_base_url}/{next_uri}"
+                        time.sleep(0.1)
+                        continue
+    
+                    # fallback to pageNumber/pageCount style
+                    page_count = data.get("pageCount")
+                    if page_count and page_number < page_count:
+                        page_number += 1
+                        url = f"{api_base_url}/api/v2/authorization/roles?pageSize={page_size}&pageNumber={page_number}"
+                        time.sleep(0.1)
+                        continue
+    
+                    # no more pages
+                    url = None
+    
+                return all_roles
+
+            # --- Get roles ---
+            roles = fetch_all_roles(api_base_url, headers)
+            if not roles:
+                messagebox.showinfo("No Data", "No roles found.")
+                return
+
+            # --- CSV header ---
+            csv_rows = [[
+                "Role ID",
+                "Role Name",
+                "Role Description",
+                "Domain",
+                "Entity Name",
+                "Actions"
+            ]]
+
+            progress["maximum"] = len(roles)
+
+            # clear UI table
+            try:
+                roles_and_permission_table.delete(*roles_and_permission_table.get_children())
+            except Exception:
+                pass
+
+            # --- Process roles ---
+            for i, role in enumerate(roles, start=1):
+                progress["value"] = i
+                counter_label.config(text=f"Processing {i} of {len(roles)}")
+                popup.update_idletasks()
+
+                role_id = role.get("id")
+                if not role_id:
+                    continue
+
+                rd_resp = requests.get(f"{api_base_url}/api/v2/authorization/roles/{role_id}", headers=headers)
+                if rd_resp.status_code != 200:
+                    continue
+
+                role_details = rd_resp.json()
+                role_name = role_details.get("name", "")
+                role_desc = role_details.get("description", "")
+                policies = role_details.get("permissionPolicies", []) or []
+
+                # Ensure permissions appear for each policy:
+                if not policies:
+                    # single row case (no policies)
+                    csv_rows.append([role_id, role_name, role_desc, "", "", ""])
+                    try:
+                        roles_and_permission_table.insert("", tk.END, values=(role_id, role_name, role_desc, "", "", ""))
+                    except Exception:
+                        pass
+                else:
+                    for p in policies:
+                        actions_str = ", ".join(p.get("actionSet", []) or [])
+                        csv_rows.append([
+                            role_id,
+                            role_name,
+                            role_desc,
+                            p.get("domain", ""),
+                            p.get("entityName", ""),
+                            actions_str
+                        ])
+                        try:
+                            roles_and_permission_table.insert("", tk.END, values=(role_id, role_name, role_desc, p.get("domain", ""), p.get("entityName", ""), actions_str))
+                        except Exception:
+                            pass
+
+                time.sleep(0.15)
+
+        finally:
+            if popup:
+                popup.destroy()
+
+            # --- Re-enable inputs ---
+            for widget in root.winfo_children():
+                if isinstance(widget, (tk.Button, ttk.Combobox, tk.Entry)):
+                    widget.configure(state="normal")
+
+            if csv_rows and len(csv_rows) > 1:
+                file_path = filedialog.asksaveasfilename(
+                    defaultextension=".csv",
+                    filetypes=[("CSV files", "*.csv")],
+                    initialfile="all_roles_with_permissions.csv"
+                )
+
+                if file_path:
+                    with open(file_path, "w", newline="", encoding="utf-8") as f:
+                        csv.writer(f).writerows(csv_rows)
+                    messagebox.showinfo("Success", f"CSV exported successfully:\n{file_path}")
+
+    threading.Thread(target=task, daemon=True).start()
+# ...existing code...
 
 def get_roles_and_permissions():
     def task():
@@ -2346,21 +2578,21 @@ user_management_agent_performance_child_frame.pack(fill="x", padx=5, pady=(5, 0)
 add_column_frame = tk.Frame(user_management_agent_performance_child_frame, bg="#eaeaf2")
 add_column_frame.pack(fill="x", padx=5, pady=5)
 
-status_lbl = tk.Label(add_column_frame, text="State: ", font=("Segoe UI", 10))
+status_lbl = tk.Label(add_column_frame, text="State: ", font=("Segoe UI", 8))
 status_lbl.pack(side="left")
 
 user_state_var = tk.StringVar()
-user_state = ttk.Combobox(add_column_frame, textvariable=user_state_var, font=("Segoe UI", 10), justify="center", state="readonly")
+user_state = ttk.Combobox(add_column_frame, textvariable=user_state_var, font=("Segoe UI", 8), justify="center", state="readonly")
 user_state["values"] = ("Active", "Inactive", "Deleted", "Any")
 user_state.current(3)
 user_state.pack(side="left")
 
 user_state.bind("<<ComboboxSelected>>", on_selection)  
 
-generate_user_list_btn = tk.Button(add_column_frame, text=" Export ", font=("Segoe UI", 10), command=generate_user_list)
+generate_user_list_btn = tk.Button(add_column_frame, text=" Export ", font=("Segoe UI", 8), command=generate_user_list)
 generate_user_list_btn.pack(side="right")
 
-add_column_btn = tk.Button(add_column_frame, text=" + ", width=3, font=("Segoe UI", 10), command=show_checkbox)
+add_column_btn = tk.Button(add_column_frame, text=" + ", width=2, font=("Segoe UI", 8), command=show_checkbox)
 add_column_btn.pack(side="right", padx=(0, 5)) 
 
 separator = tk.Frame(user_management_agent_performance_child_frame, bg="#eaeaf2", height=1)
@@ -2378,7 +2610,7 @@ for index, item in enumerate(items):
     if item in ["Name", "State"]:
         var.set(True)
 
-    checkbox = tk.Checkbutton(checkbox_frame, text=item, variable=var, bg="#eaeaf2", anchor="w")
+    checkbox = tk.Checkbutton(checkbox_frame, text=item, variable=var, bg="#eaeaf2", anchor="w", font=("Segoe UI", 8))
     row = index // 5
     col = index % 5
     checkbox.grid(row=row, column=col, sticky="w", padx=20, pady=5)
@@ -2391,7 +2623,7 @@ last_row = (len(items) + 4) // 5
 buttons_frame = tk.Frame(checkbox_frame, bg="#eaeaf2")
 buttons_frame.grid(row=last_row + 1, column=0, columnspan=5, sticky="e", padx=10, pady=(10, 5))
 
-done_btn = tk.Button(buttons_frame, text=" Add ", width=10, command=hide_listbox)
+done_btn = tk.Button(buttons_frame, text=" Add ", font=("Segoe UI", 8), command=hide_listbox)
 done_btn.pack(side="right", padx=(5, 0))
 
 def reset_default_view():
@@ -2407,21 +2639,21 @@ def reset_default_view():
     add_column_btn.config(state="active")
     separator.config(bg="#eaeaf2")
 
-clear_btn = tk.Button(buttons_frame, text=" Clear ", width=10, command=reset_default_view)
+clear_btn = tk.Button(buttons_frame, text=" Clear ", font=("Segoe UI", 8), command=reset_default_view)
 clear_btn.pack(side="right", padx=(0, 5))
 
-user_body_frame = tk.LabelFrame(user_management_agent_performance_parent_frame, bg="#eaeaf2", text="", font=("Segoe UI", 10))
+user_body_frame = tk.LabelFrame(user_management_agent_performance_parent_frame, bg="#eaeaf2", text="", font=("Segoe UI", 8))
 user_body_frame.pack(fill="both", expand=True, padx=5, pady=5)
 
 user_tree = None
 setup_treeview(user_body_frame, ["Name", "State"])
 
-user_footer_frame = tk.LabelFrame(user_management_agent_performance_parent_frame, bg="#eaeaf2", text="", font=("Segoe UI", 10))
+user_footer_frame = tk.LabelFrame(user_management_agent_performance_parent_frame, bg="#eaeaf2", text="", font=("Segoe UI", 8))
 
 user_tree_output_frame = tk.Frame(user_footer_frame, bg="#eaeaf2")
 user_tree_output_frame.pack(fill="x", padx=5, pady=5)
 
-user_tree_output_lbl = tk.Label(user_tree_output_frame, bg="#eaeaf2", text="", font=("Segoe UI", 10))
+user_tree_output_lbl = tk.Label(user_tree_output_frame, bg="#eaeaf2", text="", font=("Segoe UI", 8))
 user_tree_output_lbl.pack(fill="x")
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2434,13 +2666,16 @@ user_management_roles_and_permission_child_frame.pack(fill="both", expand=True)
 user_id_frame = tk.LabelFrame(user_management_roles_and_permission_child_frame, bg="#eaeaf2")
 user_id_frame.pack(fill="x", padx=5, pady=5)
 
-user_id_lbl = tk.Label(user_id_frame, text="User Id: ", font=("Segoe UI", 10))
+user_id_lbl = tk.Label(user_id_frame, text="User Id: ", font=("Segoe UI", 8))
 user_id_lbl.pack(side="left", padx=(5, 0), pady=5)
 
-user_id_entry = tk.Entry(user_id_frame, width=30, font=("Segoe UI", 10))
+user_id_entry = tk.Entry(user_id_frame, width=30, font=("Segoe UI",8))
 user_id_entry.pack(side="left", pady=5)
 
-export_roles_and_permission_btn = tk.Button(user_id_frame, text=" Export ", font=("Segoe UI", 10), command=get_roles_and_permissions)
+export_org_roles_and_permission_btn = tk.Button(user_id_frame, text=" Export All ", font=("Segoe UI", 8), command=get_all_roles_and_permissions)
+export_org_roles_and_permission_btn.pack(side="right", padx=5, pady=5)
+
+export_roles_and_permission_btn = tk.Button(user_id_frame, text=" Export ", font=("Segoe UI", 8), command=get_roles_and_permissions)
 export_roles_and_permission_btn.pack(side="right", padx=5, pady=5)
 
 roles_and_permission_table_frame = tk.LabelFrame(user_management_roles_and_permission_child_frame, bg="#eaeaf2")
